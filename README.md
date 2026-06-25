@@ -1,2 +1,1 @@
-
-just A Very stupid system
+Just Artificial Stupidity
