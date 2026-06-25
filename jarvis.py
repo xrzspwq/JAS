@@ -1,9 +1,7 @@
 import os
 import re
 import json
-import ollama
 from ollama import chat
-from ddgs import DDGS
 
 # --- CONFIGURATION ---
 MODEL_JARVIS = "jarvis"
@@ -11,17 +9,15 @@ MEMORY_FILE = "smorting.txt"
 NUM_CTX = 6144  # garde aligné avec le Modelfile (4 Go de VRAM = pas la peine de viser plus haut)
 
 # Mots qui déclenchent une recherche + synthèse automatique sauvegardée en mémoire
-LEARN_TRIGGERS = ["learn", "understand", "memorize"]
-# Mots qui déclenchent juste une sauvegarde de la dernière réponse (comportement d'origine)
-NOTE_TRIGGERS = ["remember", "note"]
+LEARN_TRIGGERS = ["learn", "study", "understand"]
+# Mots qui déclenchent juste une sauvegarde de la dernière réponse de JARVIS
+NOTE_TRIGGERS = ["remember", "note", "memorize"]
+# Mots qui déclenchent une simple recherche web (sans synthèse mémoire)
+SEARCH_TRIGGERS = ["search", "research"]
 
 # ---------------------------------------------------------------------------
 # MEMOIRE : stockage en JSON Lines + récupération par pertinence
 # ---------------------------------------------------------------------------
-# Plutôt que de recoller TOUTE la mémoire dans le system prompt à chaque tour
-# (ce qui sature vite num_ctx=6144 sur ce GPU), on ne réinjecte que les
-# quelques notes pertinentes par rapport à la question posée.
-
 def load_memory():
     """Charge la mémoire long terme sous forme de liste de dicts."""
     entries = []
@@ -55,7 +51,6 @@ def save_learning(category, title, content):
     memory_entries.append(entry)
     print(f"\n[System: JARVIS memorized a new entry: {title}]")
 
-
 def relevant_memories(query, k=3):
     """Renvoie les k entrées les plus pertinentes par simple recouvrement de mots."""
     query_words = set(re.findall(r"\w+", query.lower()))
@@ -76,24 +71,23 @@ def relevant_memories(query, k=3):
 # RECHERCHE WEB
 # ---------------------------------------------------------------------------
 
-def ddg_search(query):
-    try:
-        with DDGS() as ddgs:
-            results = list(ddgs.text(query, max_results=4))
-            if not results:
-                return "No results found."
-            return "\n".join(f"- {r['title']}: {r['body']}" for r in results)
-    except Exception as e:
-        return f"Error searching DuckDuckGo: {e}"
-
-
-def perform_web_search(query):
+def perform_web_search(query, max_results=5):
+    """Recherche web réelle via ddgs (anciennement duckduckgo-search). Nécessite : pip install ddgs"""
     print(f"\n[JARVIS]: Searching the web for: '{query}'...")
-    return ddg_search(query)
-
-# ---------------------------------------------------------------------------
-# LEARNING AND SAVING
-# ---------------------------------------------------------------------------
+    try:
+        from ddgs import DDGS
+    except ImportError:
+        return "[Web search unavailable — run: pip install ddgs]"
+    try:
+        results = DDGS().text(query, max_results=max_results)
+    except Exception as e:
+        return f"[Web search failed: {e}]"
+    if not results:
+        return "No information found."
+    return "\n".join(
+        f"- {r.get('title', '')}: {r.get('body', '')} ({r.get('href', '')})"
+        for r in results
+    )
 
 def auto_learn(topic):
     """Recherche le sujet, demande une synthèse factuelle au modèle, la sauvegarde."""
@@ -125,27 +119,12 @@ def extract_learn_topic(user_input):
     for trig in LEARN_TRIGGERS:
         if trig in lowered:
             topic = lowered.split(trig, 1)[1]
-            topic = topic.replace("to understand", "").replace("learn", "").strip(" :,.-")
-            return topic if topic else None
+            topic = topic.replace("to understand", "").strip(" :,.-")
+            if topic.startswith("about "):
+                topic = topic[len("about "):]
+            return topic.strip() if topic else None
     return None
 
-
-# ---------------------------------------------------------------------------
-# OUTIL POUR LE MODELE (tool calling natif — le tag tools-q4_k_m le supporte)
-# ---------------------------------------------------------------------------
-
-WEB_SEARCH_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "web_search",
-        "description": "Search the web for current or factual information",
-        "parameters": {
-            "type": "object",
-            "properties": {"query": {"type": "string"}},
-            "required": ["query"],
-        },
-    },
-}
 
 # --- INITIALISATION ---
 print("Initializing JARVIS protocols...")
@@ -165,14 +144,10 @@ Example:
 User: hello
 JARVIS: Good evening, Sir. What can I do for you?
 
-You also have a web_search function for when you genuinely need current or
-real-time facts. Either call it for real, or don't mention it — never type out
-JSON or describe what a tool call would look like as plain text.
+You also have a web_search function for when you genuinely need current or real-time facts.
+Either call it for real, or don't mention it — never type out JSON or describe what a tool call would look like as plain text.
 
-Relevant memory notes about the user may be provided right before some of the
-user's messages. Use them for personal questions about 'Sir'. If no memory note
-answers a personal question, say plainly that you don't have that recorded yet
-— never guess, and never search the web just to figure out who the user is.
+Relevant memory notes about the user may be provided right before some of the user's messages. Use them for personal questions about 'Sir'. If no memory note answers a personal question, say plainly that you don't have that recorded yet — never guess, and never search the web just to figure out who the user is.
 """
 
 messages = [{"role": "system", "content": system_prompt}]
@@ -189,53 +164,53 @@ while True:
     if not user_input.strip():
         continue
 
-    # Mode "apprentissage" : recherche + synthèse + sauvegarde automatique
-    learn_topic = extract_learn_topic(user_input)
-    if learn_topic:
-        response = auto_learn(learn_topic)
-        print(f"\n{response}")
+    lowered = user_input.lower()
+
+    # 1) "remember/note" -> sauvegarde la dernière réponse de JARVIS telle quelle
+    if any(trig in lowered for trig in NOTE_TRIGGERS):
+        last_reply = next(
+            (m["content"] for m in reversed(messages) if m["role"] == "assistant"),
+            None,
+        )
+        if last_reply:
+            save_learning("note", user_input[:60], last_reply)
+            print("\n[System: last JARVIS reply saved to memory.]")
+        else:
+            print("\n[System: nothing to remember yet, Sir.]")
+        messages.append({"role": "user", "content": user_input})
         continue
 
-    messages.append({"role": "user", "content": user_input})
+    # 2) "learn/study/understand/memorize" -> recherche + synthèse + sauvegarde mémoire
+    learn_topic = extract_learn_topic(user_input)
+    if learn_topic:
+        reply = auto_learn(learn_topic)
+        print(f"\n{reply}")
+        messages.append({"role": "user", "content": user_input})
+        messages.append({"role": "assistant", "content": reply})
+        continue
 
-    # On injecte les souvenirs pertinents juste pour cet appel, sans les
-    # stocker dans l'historique persistant (pour ne pas gonfler le contexte).
-    call_messages = messages.copy()
+    # 3) "search/research" (sans déclencheur d'apprentissage) -> recherche web brute
+    if any(trig in lowered for trig in SEARCH_TRIGGERS):
+        reply = perform_web_search(user_input)
+        print(f"\n[JARVIS]: {reply}")
+        messages.append({"role": "user", "content": user_input})
+        messages.append({"role": "assistant", "content": reply})
+        continue
+
+    # 4) Conversation normale -> on parle vraiment à JARVIS, mémoires pertinentes en contexte
     relevant = relevant_memories(user_input)
+    turn_messages = list(messages)
     if relevant:
-        mem_text = "\n".join(f"- [{e.get('category','')}] {e.get('title','')}: {e.get('content','')}" for e in relevant)
-        call_messages.insert(-1, {"role": "system", "content": f"Relevant memory notes:\n{mem_text}"})
-
-    # Agent loop
-    while True:
-        response = chat(
-            model=MODEL_JARVIS,
-            messages=call_messages,
-            tools=[WEB_SEARCH_TOOL],
-            options={"num_ctx": NUM_CTX},
+        mem_text = "\n".join(
+            f"- [{e.get('category', '')}] {e.get('title', '')}: {e.get('content', '')}"
+            for e in relevant
         )
+        turn_messages.append({"role": "system", "content": f"Relevant memory notes:\n{mem_text}"})
+    turn_messages.append({"role": "user", "content": user_input})
 
-        if response.message.tool_calls:
-            call_messages.append(response.message)
-            for tool_call in response.message.tool_calls:
-                if tool_call.function.name == "web_search":
-                    search_query = tool_call.function.arguments.get("query")
-                    web_snippets = perform_web_search(search_query)
-                    call_messages.append({
-                        "role": "tool",
-                        "content": f"Web search results for '{search_query}':\n{web_snippets}",
-                        "tool_name": "web_search",
-                    })
-            continue
-        else:
-            jarvis_response = response.message.content
-            print(f"\nJARVIS: {jarvis_response}\n")
-            messages.append({"role": "assistant", "content": jarvis_response})
+    response = chat(model=MODEL_JARVIS, messages=turn_messages, options={"num_ctx": NUM_CTX})
+    reply = response.message.content
+    print(f"\nJARVIS: {reply}")
 
-            # Sauvegarde manuelle simple ("souviens-toi que...") for the name
-            if any(kw in user_input.lower() for kw in NOTE_TRIGGERS):
-                title = user_input
-                for trig in NOTE_TRIGGERS:
-                    title = title.lower().replace(trig, "")
-                save_learning("note", title.strip(" :,.-"), jarvis_response[:300] + "...")
-            break
+    messages.append({"role": "user", "content": user_input})
+    messages.append({"role": "assistant", "content": reply})
