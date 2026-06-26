@@ -1,0 +1,11 @@
+FROM ./Dolphin3.0-Qwen2.5-3b-Q6_K_L.gguf
+
+# 1. Balanced Creativity
+PARAMETER temperature 0.5
+
+# 2. Prevent Repetition Without Breaking Logic
+PARAMETER repeat_penalty 1.12
+
+# 3. Context Management (Crucial for 4GB VRAM)
+PARAMETER num_ctx 6144
+PARAMETER num_gpu 64

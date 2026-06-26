@@ -1,0 +1,11 @@
+FROM ./qwen2.5-coder-7b-instruct-q4_k_m.gguf 
+
+# 1. Balanced Creativity
+PARAMETER temperature 0.5
+
+# 2. Prevent Repetition Without Breaking Logic
+PARAMETER repeat_penalty 1.12
+
+# 3. Context Management (Crucial for 4GB VRAM)
+PARAMETER num_ctx 6144
+PARAMETER num_gpu 30
