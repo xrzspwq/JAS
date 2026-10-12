@@ -1,5 +1,7 @@
 Just Artificial Stupidity
 
+https://github.com/ggml-org/llama.cpp
+
 pip install -U huggingface_hub hf_transfer
 python jas_download_models.py --list                 # preview, download nothing
 python jas_download_models.py                        # download everything
@@ -9,3 +11,6 @@ python jas_download_models.py --with-optional        # also gpt-oss-20b
 python jas_download_models.py --dir D:/jas/models --yes
 
 llama-swap --config models\llama-swap.config.yaml --listen 127.0.0.1:8080
+
+pip install openai
+pip install psutil rich
