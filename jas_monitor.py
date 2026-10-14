@@ -3,7 +3,7 @@
 jas_monitor.py - live dashboard to run NEXT TO jas.py.
 
 Shows: CPU, RAM, GPU, VRAM, which model Jas is using, generation speed (tokens/s),
-and an estimate of the time left for the current reply.
+an estimate of the time left for the current reply, and how full the context window is.
 
     pip install psutil rich
     python jas_monitor.py                 # refreshes ~2x per second, Ctrl+C to quit
@@ -209,6 +209,15 @@ class Monitor:
             g.add_row("Task elapsed", f"{fmt_time(now - st['task_start'])}   (step {st.get('step', 0)}/{st.get('max_steps', '?')})")
         elif st.get("last_task_s") is not None:
             g.add_row("Last task took", fmt_time(st["last_task_s"]))
+
+        if st.get("ctx_limit") and st.get("ctx_used") and state != "offline":
+            used, limit = st["ctx_used"], st["ctx_limit"]
+            ctx = Text()
+            ctx.append_text(bar(used / limit * 100, 22))
+            ctx.append(f"  {used:,} / {limit:,} tokens")
+            if st.get("notes") is not None:
+                ctx.append(f"   |  {st['notes']} notes", style="grey62")
+            g.add_row("Context", ctx)
 
         if state in ("waiting", "thinking", "generating") and st.get("reply_start"):
             tokens, expect = st.get("tokens", 0), max(st.get("expect_tokens", 250), 1)
