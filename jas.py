@@ -5,6 +5,7 @@ jas.py - Jas v0: a local Jarvis-style terminal agent for Windows.
 Setup:
     pip install openai ddgs trafilatura
     llama-swap --config <your config> --listen 127.0.0.1:8080     (keep it running)
+    llama-swap --config models\llama-swap.config.yaml --listen 127.0.0.1:8080
     python jas.py
 
 Commands inside the chat:
