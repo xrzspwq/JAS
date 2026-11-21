@@ -389,6 +389,17 @@ def archive_fetch(url: str):
     return snap_url, title, text, snap.get("timestamp", "")
 
 
+def describe() -> str:
+    """One line for Jas's startup banner: which route web traffic takes, so there is never any doubt."""
+    if PROXY:
+        route = "via proxy " + re.sub(r"//[^@/]*@", "//***@", PROXY)
+    else:
+        route = "DIRECT connection (sites and search engines see your real IP address)"
+    engine = f"SearXNG at {SEARXNG}" if SEARXNG else "public engines through ddgs"
+    fallbacks = ", ".join(n for n, on in (("headless browser", USE_BROWSER), ("Internet Archive", USE_ARCHIVE)) if on) or "none"
+    return f"Web: {route}; search: {engine}; fallbacks: {fallbacks}"
+
+
 # ------------------------------------------------------------------ public API: fetch
 def fetch(url: str, max_chars: int = 6000) -> str:
     """Read a web page. Returns labelled text, or a string starting with 'ERROR' that names the exact error code."""

@@ -1,0 +1,15 @@
+# Jas - install everything with:   pip install -r requirements.txt
+openai
+psutil
+rich
+huggingface_hub
+httpx[socks]
+ddgs
+trafilatura
+pywinauto; sys_platform == "win32"
+pyautogui; sys_platform == "win32"
+
+# Optional extras (uncomment what you want):
+# playwright              # real-browser fallback for sites that block plain requests (then: playwright install chromium)
+# pypdf                   # read PDF files
+# rapidocr-onnxruntime    # lets Jas read the screen text of apps that expose no controls
