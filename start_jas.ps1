@@ -14,6 +14,7 @@
 
   Settings you have exported (JAS_PROXY, SEARXNG_URL, JAS_CTX, ... any JAS_*) are passed to all three terminals.
   Put this file in your Jas folder (next to jas.py). Double-click start_jas.bat if scripts are blocked on your PC.
+  Everything Jas writes - memory.db, status.json, backups - stays in <Jas folder>\.jas (JAS_HOME moves it).
 #>
 [CmdletBinding()]
 param(
@@ -57,6 +58,21 @@ if (-not $Swap) {
 }
 if (-not $Swap) { throw "llama-swap not found. Put llama-swap.exe on your PATH or next to this script." }
 foreach ($f in "jas.py") { if (-not (Test-Path (Join-Path $Root $f))) { throw "$f not found in $Root - put this script in your Jas folder." } }
+
+# ---------------------------------------------------------------- the .jas data folder
+# Jas keeps everything it writes (memory.db, status.json, backups) in <Jas folder>\.jas. If data from an older
+# version is still in %USERPROFILE%\.jas, copy it in once - the old folder is left untouched.
+$DataDir = Join-Path $Root ".jas"
+New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
+$OldDir = Join-Path $env:USERPROFILE ".jas"
+if ((Resolve-Path -LiteralPath $OldDir -ErrorAction SilentlyContinue) -and
+    (Resolve-Path -LiteralPath $OldDir).Path -ne (Resolve-Path -LiteralPath $DataDir).Path) {
+    $existing = @(Get-ChildItem -LiteralPath $DataDir -Force -ErrorAction SilentlyContinue)
+    if ($existing.Count -eq 0) {
+        Write-Host "Found an older data folder at $OldDir - copying it into $DataDir (the old one is kept)." -ForegroundColor DarkGray
+        Copy-Item -Path (Join-Path $OldDir "*") -Destination $DataDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
 
 # ---------------------------------------------------------------- what each terminal runs
 $envLines = @()
@@ -129,6 +145,7 @@ Write-Host "Config     : $Config"
 Write-Host "Address    : http://127.0.0.1:$Port"
 Write-Host "Layout     : $plan"
 if ($envLines.Count) { Write-Host "Passing on : $(($envLines | ForEach-Object { ($_ -split ' = ')[0] -replace '^\$env:', '' }) -join ', ')" }
+Write-Host "Data       : $DataDir  (memory.db, status.json, backups)"
 
 if ($DryRun) {
     foreach ($t in $terms) { Write-Host "`n--- $($t.Title) runs: ---" -ForegroundColor Cyan; Write-Host $t.Script }

@@ -11,7 +11,7 @@ an estimate of the time left for the current reply, and how full the context win
     python jas_monitor.py --url http://127.0.0.1:2004   # llama-swap address (optional)
 
 Data sources:
-  * ~/.jas/status.json   written by jas.py (model, tokens, speed, step, state)
+  * .jas/status.json     written by jas.py (model, tokens, speed, step, state) - inside the Jas folder
   * psutil               CPU / RAM / llama-server processes
   * nvidia-smi           GPU utilisation and VRAM (comes with your NVIDIA driver)
   * llama-swap /running  loaded models (best effort; skipped if unavailable)
@@ -34,7 +34,11 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-STATUS_FILE = Path.home() / ".jas" / "status.json"
+try:
+    import jas_paths                      # status file lives in <jas folder>\.jas
+    STATUS_FILE = jas_paths.DATA / "status.json"
+except ImportError:
+    STATUS_FILE = Path.home() / ".jas" / "status.json"
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 SPARK = "▁▂▃▄▅▆▇█"
 
@@ -316,7 +320,7 @@ def main():
     ap.add_argument("--interval", type=float, default=0.5, help="refresh interval in seconds")
     ap.add_argument("--url", default=os.environ.get("JAS_URL", "http://127.0.0.1:8080/v1").removesuffix("/v1"),
                     help="llama-swap base URL (default: from JAS_URL or http://127.0.0.1:8080)")
-    ap.add_argument("--file", default=str(Path.home() / ".jas" / "status.json"), help="status file written by jas.py")
+    ap.add_argument("--file", default=str(STATUS_FILE), help="status file written by jas.py")
     args = ap.parse_args()
 
     STATUS_FILE = Path(args.file)

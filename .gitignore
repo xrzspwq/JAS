@@ -2,3 +2,4 @@ env/
 models/
 llama.cpp/
 __pycache__/
+.jas/

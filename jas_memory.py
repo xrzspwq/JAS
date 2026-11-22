@@ -6,7 +6,7 @@ Short notes ("the user prefers dark mode", "project X lives in D:/code/x") are s
 file and retrieved BY MEANING with your embedding model (the "embed" model in llama-swap).
 If the embedding model is unavailable, it falls back to keyword matching, so memory never blocks Jas.
 
-    ~/.jas/memory.db        (override with the JAS_MEMORY environment variable)
+    <jas folder>/.jas/memory.db   (override with JAS_MEMORY, or JAS_HOME for the whole folder)
     JAS_EMBED_MODEL         llama-swap model name used for embeddings (default: embed)
 
 Used by jas.py; you normally don't run this file. `python jas_memory.py` prints your notes.
@@ -20,7 +20,16 @@ from datetime import datetime
 from operator import mul
 from pathlib import Path
 
-DB_PATH = Path(os.environ.get("JAS_MEMORY") or (Path.home() / ".jas" / "memory.db"))
+def _default_db() -> Path:
+    """memory.db lives in <jas folder>/.jas (see jas_paths.py); JAS_MEMORY still overrides it."""
+    try:
+        import jas_paths
+        return jas_paths.file("memory.db")
+    except ImportError:
+        return Path.home() / ".jas" / "memory.db"
+
+
+DB_PATH = Path(os.environ.get("JAS_MEMORY") or _default_db())
 EMBED_MODEL = os.environ.get("JAS_EMBED_MODEL", "embed")
 # Qwen3-Embedding works best when the QUERY (not the stored notes) carries an instruction.
 QUERY_PREFIX = ("Instruct: Given a message from the user, retrieve stored notes about the user, their PC, "
